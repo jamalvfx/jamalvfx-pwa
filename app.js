@@ -1,5 +1,50 @@
 const { useState } = React;
 
+/* ---------- Supabase config ---------- */
+const SUPABASE_URL = 'https://oskheiwnkklfumzzhjkd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jRizYnzfIdm_XQpHlFKLZQ_QYbaQnFH';
+
+async function uploadFileToSupabase(file) {
+  const ext = file.name.split('.').pop();
+  const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/order-files/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': file.type || 'application/octet-stream',
+    },
+    body: file,
+  });
+  if (!res.ok) throw new Error('upload failed');
+  return `${SUPABASE_URL}/storage/v1/object/public/order-files/${path}`;
+}
+
+async function insertOrderToSupabase(order) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      order_code: order.id,
+      service_title: order.serviceTitle,
+      package_label: order.packageLabel,
+      price: order.price,
+      name: order.name,
+      contact: order.contact,
+      description: order.desc,
+      reference: order.reference,
+      deadline: order.deadline,
+      file_url: order.fileUrl || null,
+    }),
+  });
+  if (!res.ok) throw new Error('insert failed');
+}
+
 /* ---------- local icon set (replaces lucide-react — no bundler here) ---------- */
 function Icon({ size = 18, color = 'currentColor', style, children }) {
   return (
@@ -116,9 +161,12 @@ function App() {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [orderStep, setOrderStep] = useState(1);
   const [form, setForm] = useState({ name: '', contact: '', desc: '', reference: '', deadline: 'normal' });
+  const [orderFile, setOrderFile] = useState(null);
   const [orders, setOrders] = useState([]);
   const [lastOrder, setLastOrder] = useState(null);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   function goOrder(service) {
     setSelectedService(service || null);
@@ -137,15 +185,29 @@ function App() {
     setErrors(e);
     return Object.keys(e).length === 0;
   }
-  function submitOrder() {
+  async function submitOrder() {
+    setSubmitting(true);
+    setSubmitError('');
     const orderNum = 'JV-' + Math.floor(1000 + Math.random() * 9000);
-    const newOrder = { id: orderNum, serviceTitle: selectedService.title, packageLabel: selectedPackage.label, price: selectedPackage.price, status: 'در انتظار بررسی', ...form };
-    setOrders((prev) => [newOrder, ...prev]);
-    setLastOrder(newOrder);
-    setScreen('confirm');
+    try {
+      let fileUrl = null;
+      if (orderFile) {
+        fileUrl = await uploadFileToSupabase(orderFile);
+      }
+      const newOrder = { id: orderNum, serviceTitle: selectedService.title, packageLabel: selectedPackage.label, price: selectedPackage.price, status: 'در انتظار بررسی', fileUrl, ...form };
+      await insertOrderToSupabase(newOrder);
+      setOrders((prev) => [newOrder, ...prev]);
+      setLastOrder(newOrder);
+      setScreen('confirm');
+    } catch (err) {
+      setSubmitError('ارسال سفارش با خطا مواجه شد. دوباره امتحان کن.');
+    } finally {
+      setSubmitting(false);
+    }
   }
   function resetAndGoHome() {
     setForm({ name: '', contact: '', desc: '', reference: '', deadline: 'normal' });
+    setOrderFile(null);
     setErrors({});
     setSelectedService(null);
     setSelectedPackage(null);
@@ -171,6 +233,10 @@ function App() {
             onValidate={validateStep3}
             onSubmit={submitOrder}
             onCancel={() => setScreen('home')}
+            orderFile={orderFile}
+            setOrderFile={setOrderFile}
+            submitting={submitting}
+            submitError={submitError}
           />
         )}
         {screen === 'confirm' && lastOrder && <ConfirmScreen order={lastOrder} onDone={resetAndGoHome} onSeeOrders={() => setScreen('orders')} />}
@@ -270,7 +336,7 @@ function TrustStat({ value, label }) {
   );
 }
 
-function OrderScreen({ step, setStep, selectedService, setSelectedService, selectedPackage, setSelectedPackage, form, updateForm, errors, onValidate, onSubmit, onCancel }) {
+function OrderScreen({ step, setStep, selectedService, setSelectedService, selectedPackage, setSelectedPackage, form, updateForm, errors, onValidate, onSubmit, onCancel, orderFile, setOrderFile, submitting, submitError }) {
   return (
     <div className="fade-up" style={{ padding: '4px 20px 20px' }}>
       <ScreenHeader title="ثبت سفارش" onBack={onCancel} />
@@ -392,6 +458,20 @@ function OrderScreen({ step, setStep, selectedService, setSelectedService, selec
               ))}
             </div>
           </Field>
+          <Field label="آپلود عکس یا فایل موزیک (اختیاری)">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: colors.surface, border: `1.5px dashed ${colors.border}`, borderRadius: 10, padding: '11px 12px', cursor: 'pointer', ...font }}>
+              <Package size={16} color={colors.textMuted} />
+              <span style={{ color: orderFile ? colors.text : colors.textFaint, fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {orderFile ? orderFile.name : 'برای انتخاب فایل ضربه بزن'}
+              </span>
+              <input
+                type="file"
+                accept="image/*,audio/*"
+                style={{ display: 'none' }}
+                onChange={(e) => setOrderFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+              />
+            </label>
+          </Field>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
             <button onClick={() => setStep(2)} style={secondaryBtnStyle}>بازگشت</button>
@@ -414,9 +494,12 @@ function OrderScreen({ step, setStep, selectedService, setSelectedService, selec
               <div style={{ color: colors.text, fontSize: 12.5, lineHeight: 1.7 }}>{form.desc}</div>
             </div>
           </div>
+          {submitError && <div style={{ color: colors.red, fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{submitError}</div>}
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setStep(3)} style={secondaryBtnStyle}>ویرایش</button>
-            <button onClick={onSubmit} style={{ ...primaryBtnStyle, flex: 1 }}>ثبت نهایی سفارش</button>
+            <button onClick={() => setStep(3)} style={secondaryBtnStyle} disabled={submitting}>ویرایش</button>
+            <button onClick={onSubmit} disabled={submitting} style={{ ...primaryBtnStyle, flex: 1, opacity: submitting ? 0.7 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+              {submitting ? 'در حال ارسال...' : 'ثبت نهایی سفارش'}
+            </button>
           </div>
         </div>
       )}
