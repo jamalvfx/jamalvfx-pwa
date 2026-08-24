@@ -45,6 +45,38 @@ async function insertOrderToSupabase(order) {
   if (!res.ok) throw new Error('insert failed');
 }
 
+async function updateOrderByCode(orderCode, patch) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?order_code=eq.${encodeURIComponent(orderCode)}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('update failed');
+}
+
+async function fetchOrdersByContact(contact) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&contact=eq.${encodeURIComponent(contact)}&order=created_at.desc`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) throw new Error('fetch failed');
+  return res.json();
+}
+
+const PAYMENT_CARD = { number: '6219861916255325', holder: 'جمال محمدی' };
+
+async function fetchOrdersByContact(contact) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?contact=eq.${encodeURIComponent(contact)}&select=*&order=created_at.desc`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) throw new Error('fetch failed');
+  return res.json();
+}
+
 /* ---------- local icon set (replaces lucide-react — no bundler here) ---------- */
 function Icon({ size = 18, color = 'currentColor', style, children }) {
   return (
@@ -68,6 +100,10 @@ const User = (p) => <Icon {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 
 const Send = (p) => <Icon {...p}><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></Icon>;
 const Gift = (p) => <Icon {...p}><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8" /><path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8" /></Icon>;
 const Package = (p) => <Icon {...p}><path d="M16.5 9.4 7.55 4.24" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.27 6.96 12 12.01l8.73-5.05" /><path d="M12 22.08V12" /></Icon>;
+const CreditCard = (p) => <Icon {...p}><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></Icon>;
+const Copy = (p) => <Icon {...p}><rect width="14" height="14" x="8" y="8" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></Icon>;
+const Download = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></Icon>;
+const Search = (p) => <Icon {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Icon>;
 
 /* ---------- design tokens ---------- */
 const colors = {
@@ -253,7 +289,7 @@ function App() {
           />
         )}
         {screen === 'confirm' && lastOrder && <ConfirmScreen order={lastOrder} onDone={resetAndGoHome} onSeeOrders={() => setScreen('orders')} />}
-        {screen === 'orders' && <OrdersScreen orders={orders} onNewOrder={() => goOrder(null)} />}
+        {screen === 'orders' && <OrdersScreen onNewOrder={() => goOrder(null)} />}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 12px calc(14px + env(safe-area-inset-bottom))', borderTop: `1px solid ${colors.border}`, background: colors.surface, flexShrink: 0, position: 'sticky', bottom: 0 }}>
@@ -555,21 +591,100 @@ function ScreenHeader({ title, onBack }) {
   );
 }
 
+function PaymentStatusBadge({ status }) {
+  const map = {
+    'در انتظار پرداخت': { c: colors.gold, bg: colors.goldDim },
+    'در انتظار تایید پرداخت': { c: colors.red, bg: colors.redDim },
+    'پرداخت شده': { c: colors.success, bg: '#0f3a26' },
+  };
+  const s = map[status] || map['در انتظار پرداخت'];
+  return <span style={{ color: s.c, background: s.bg, fontSize: 11, padding: '4px 10px', borderRadius: 999, fontWeight: 600, whiteSpace: 'nowrap' }}>{status || 'در انتظار پرداخت'}</span>;
+}
+
+function PaymentSection({ order }) {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  function copyCard() {
+    try {
+      navigator.clipboard.writeText(PAYMENT_CARD.number.replace(/(.{4})/g, '$1 ').trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) {}
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const url = await uploadFileToSupabase(file);
+      await updateOrderByCode(order.id, { receipt_url: url, payment_status: 'در انتظار تایید پرداخت' });
+      setDone(true);
+    } catch (e) {
+      setError('ارسال رسید با خطا مواجه شد. دوباره امتحان کن.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 16, textAlign: 'center' }}>
+        <Check size={26} color={colors.success} style={{ marginBottom: 8 }} />
+        <div style={{ color: colors.text, fontSize: 13, fontWeight: 700, marginBottom: 4 }}>رسید پرداخت دریافت شد</div>
+        <div style={{ color: colors.textMuted, fontSize: 11.5 }}>به‌زودی بررسی و تایید می‌شه.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 16, textAlign: 'right' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <CreditCard size={16} color={colors.red} />
+        <span style={{ color: colors.text, fontWeight: 700, fontSize: 13 }}>پرداخت کارت‌به‌کارت</span>
+      </div>
+      <div style={{ background: colors.surface2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+        <div style={{ color: colors.textFaint, fontSize: 10.5, marginBottom: 4 }}>شماره کارت</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ color: colors.text, fontSize: 14, fontWeight: 700, letterSpacing: 1, direction: 'ltr' }}>{PAYMENT_CARD.number.replace(/(.{4})/g, '$1 ').trim()}</span>
+          <button onClick={copyCard} style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? colors.success : colors.textMuted, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+            <Copy size={14} />
+          </button>
+        </div>
+        <div style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 6 }}>به نام {PAYMENT_CARD.holder}</div>
+      </div>
+      <div style={{ color: colors.textMuted, fontSize: 11.5, marginBottom: 10 }}>مبلغ سفارش رو کارت‌به‌کارت کن و عکس رسید رو آپلود کن:</div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: colors.surface2, border: `1.5px dashed ${colors.border}`, borderRadius: 10, padding: '11px 12px', cursor: 'pointer', marginBottom: 10, ...font }}>
+        <Package size={16} color={colors.textMuted} />
+        <span style={{ color: file ? colors.text : colors.textFaint, fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {file ? file.name : 'انتخاب عکس رسید'}
+        </span>
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)} />
+      </label>
+      {error && <div style={{ color: colors.red, fontSize: 11, marginBottom: 8 }}>{error}</div>}
+      <button onClick={handleUpload} disabled={!file || uploading} style={{ ...primaryBtnStyle, width: '100%', opacity: !file || uploading ? 0.6 : 1, cursor: !file || uploading ? 'not-allowed' : 'pointer' }}>
+        {uploading ? 'در حال ارسال...' : 'ارسال رسید پرداخت'}
+      </button>
+    </div>
+  );
+}
+
 function ConfirmScreen({ order, onDone, onSeeOrders }) {
   return (
-    <div className="fade-up" style={{ padding: '60px 24px 20px', textAlign: 'center' }}>
-      <div style={{ width: 70, height: 70, borderRadius: '50%', background: '#0f3a26', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-        <Check size={32} color={colors.success} />
+    <div className="fade-up" style={{ padding: '40px 24px 20px', textAlign: 'center' }}>
+      <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#0f3a26', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+        <Check size={28} color={colors.success} />
       </div>
-      <div style={{ color: colors.text, fontWeight: 800, fontSize: 17, marginBottom: 8 }}>سفارش ثبت شد</div>
-      <div style={{ color: colors.textMuted, fontSize: 12.5, lineHeight: 1.8, marginBottom: 22 }}>
+      <div style={{ color: colors.text, fontWeight: 800, fontSize: 16, marginBottom: 8 }}>سفارش ثبت شد</div>
+      <div style={{ color: colors.textMuted, fontSize: 12.5, lineHeight: 1.8, marginBottom: 18 }}>
         سفارش تو با کد <span style={{ color: colors.red, fontWeight: 700 }}>{order.id}</span> ثبت شد.
-        <br />
-        به‌زودی برای هماهنگی باهات تماس گرفته می‌شه.
       </div>
-      <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 14, textAlign: 'right', marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <ReviewRow icon={Music2} label="خدمت" value={order.serviceTitle} />
-        <ReviewRow icon={Package} label="پکیج" value={`${order.packageLabel} — ${order.price}`} />
+      <div style={{ marginBottom: 18 }}>
+        <PaymentSection order={order} />
       </div>
       <button onClick={onSeeOrders} style={{ ...primaryBtnStyle, width: '100%', marginBottom: 10 }}>پیگیری سفارش</button>
       <button onClick={onDone} style={{ ...secondaryBtnStyle, width: '100%' }}>بازگشت به خانه</button>
@@ -577,27 +692,73 @@ function ConfirmScreen({ order, onDone, onSeeOrders }) {
   );
 }
 
-function OrdersScreen({ orders, onNewOrder }) {
+function OrdersScreen({ onNewOrder }) {
+  const [phone, setPhone] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [error, setError] = useState('');
+
+  async function search() {
+    if (!phone.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const data = await fetchOrdersByContact(phone.trim());
+      setOrders(data);
+      setSearched(true);
+    } catch (e) {
+      setError('خطا در دریافت اطلاعات. دوباره امتحان کن.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="fade-up" style={{ padding: '4px 20px 20px' }}>
       <ScreenHeader title="سفارش‌های من" onBack={onNewOrder} />
-      {orders.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 10px', color: colors.textFaint }}>
-          <ClipboardList size={36} style={{ margin: '0 auto 14px', opacity: 0.5 }} />
-          <div style={{ fontSize: 13, marginBottom: 4, color: colors.textMuted }}>هنوز سفارشی ثبت نکردی</div>
-          <div style={{ fontSize: 11.5, marginBottom: 18 }}>اولین سفارشت رو همین حالا ثبت کن</div>
-          <button onClick={onNewOrder} style={primaryBtnStyle}>ثبت سفارش</button>
+      <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10 }}>شماره تماس یا آیدی‌ای که موقع ثبت سفارش وارد کردی رو بزن:</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} placeholder="۰۹۱۲... یا @username" style={{ ...inputStyle, flex: 1 }} />
+        <button onClick={search} disabled={loading} style={{ ...primaryBtnStyle, padding: '0 16px', opacity: loading ? 0.7 : 1 }}>
+          <Search size={16} color="#fff" />
+        </button>
+      </div>
+      {error && <div style={{ color: colors.red, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>{error}</div>}
+      {loading && <div style={{ color: colors.textMuted, textAlign: 'center', padding: 30, fontSize: 12.5 }}>در حال جستجو...</div>}
+      {!loading && searched && orders.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 10px', color: colors.textFaint }}>
+          <ClipboardList size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+          <div style={{ fontSize: 12.5, color: colors.textMuted }}>سفارشی با این شماره پیدا نشد</div>
         </div>
-      ) : (
+      )}
+      {!loading && !searched && (
+        <div style={{ textAlign: 'center', padding: '40px 10px', color: colors.textFaint }}>
+          <ClipboardList size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+          <div style={{ fontSize: 12.5, color: colors.textMuted }}>برای دیدن سفارش‌هات، شماره‌ت رو جستجو کن</div>
+        </div>
+      )}
+      {!loading && orders.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {orders.map((o) => (
             <div key={o.id} style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ color: colors.text, fontWeight: 700, fontSize: 13 }}>{o.serviceTitle}</span>
+                <span style={{ color: colors.text, fontWeight: 700, fontSize: 13 }}>{o.service_title}</span>
                 <StatusBadge status={o.status} />
               </div>
-              <div style={{ color: colors.textMuted, fontSize: 11.5, marginBottom: 4 }}>پکیج {o.packageLabel} · {o.price}</div>
-              <div style={{ color: colors.textFaint, fontSize: 11 }}>کد سفارش: {o.id}</div>
+              <div style={{ color: colors.textMuted, fontSize: 11.5, marginBottom: 4 }}>پکیج {o.package_label} · {o.price}</div>
+              <div style={{ color: colors.textFaint, fontSize: 11, marginBottom: 8 }}>کد سفارش: {o.order_code}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: o.delivery_url ? 10 : 0 }}>
+                <span style={{ color: colors.textFaint, fontSize: 10.5 }}>وضعیت پرداخت:</span>
+                <PaymentStatusBadge status={o.payment_status} />
+              </div>
+              {o.delivery_url && (
+                <a href={o.delivery_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: colors.redDim, color: colors.red, textDecoration: 'none', borderRadius: 10, padding: '9px', fontSize: 12, fontWeight: 700 }}>
+                  <Download size={14} />
+                  دانلود فایل نهایی پروژه
+                </a>
+              )}
+              {(!o.payment_status || o.payment_status === 'در انتظار پرداخت') && <PaymentSection order={{ id: o.order_code }} />}
             </div>
           ))}
         </div>
