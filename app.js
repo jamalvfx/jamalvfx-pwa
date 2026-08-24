@@ -162,7 +162,14 @@ function App() {
   const [orderStep, setOrderStep] = useState(1);
   const [form, setForm] = useState({ name: '', contact: '', desc: '', reference: '', deadline: 'normal' });
   const [orderFile, setOrderFile] = useState(null);
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(() => {
+    try {
+      const saved = localStorage.getItem('jamalvfx_orders');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [lastOrder, setLastOrder] = useState(null);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -196,7 +203,13 @@ function App() {
       }
       const newOrder = { id: orderNum, serviceTitle: selectedService.title, packageLabel: selectedPackage.label, price: selectedPackage.price, status: 'در انتظار بررسی', fileUrl, ...form };
       await insertOrderToSupabase(newOrder);
-      setOrders((prev) => [newOrder, ...prev]);
+      setOrders((prev) => {
+        const updated = [newOrder, ...prev];
+        try {
+          localStorage.setItem('jamalvfx_orders', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
       setLastOrder(newOrder);
       setScreen('confirm');
     } catch (err) {
