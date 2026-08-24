@@ -34,6 +34,28 @@ async function updateStatus(id, status) {
   if (!res.ok) throw new Error('update failed');
 }
 
+async function updateOrder(id, patch) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('update failed');
+}
+
+async function deleteOrder(id) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) throw new Error('delete failed');
+}
+
 const STATUS_OPTIONS = ['در انتظار بررسی', 'در حال انجام', 'تحویل شده'];
 
 function StatusBadge({ status }) {
@@ -78,9 +100,22 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-function OrderCard({ order, onStatusChange }) {
+function OrderCard({ order, onStatusChange, onDelivered, onDelete, onConfirmPayment }) {
   const isImage = order.file_url && /\.(jpg|jpeg|png|gif|webp)$/i.test(order.file_url);
   const isAudio = order.file_url && /\.(mp3|wav|ogg|m4a)$/i.test(order.file_url);
+  const [deliveryLink, setDeliveryLink] = useState(order.delivery_url || '');
+  const [savingDelivery, setSavingDelivery] = useState(false);
+
+  async function saveDelivery() {
+    if (!deliveryLink.trim()) return;
+    setSavingDelivery(true);
+    try {
+      await onDelivered(order.id, deliveryLink.trim());
+    } finally {
+      setSavingDelivery(false);
+    }
+  }
+
   return (
     <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -102,28 +137,81 @@ function OrderCard({ order, onStatusChange }) {
           {isImage && <img src={order.file_url} alt="فایل سفارش" style={{ maxWidth: '100%', borderRadius: 10, border: `1px solid ${colors.border}` }} />}
           {isAudio && <audio controls src={order.file_url} style={{ width: '100%' }} />}
           <div style={{ marginTop: 6 }}>
-            <a href={order.file_url} target="_blank" rel="noreferrer" style={{ color: colors.red, fontSize: 12, fontWeight: 600 }}>دانلود / مشاهده فایل</a>
+            <a href={order.file_url} target="_blank" rel="noreferrer" style={{ color: colors.red, fontSize: 12, fontWeight: 600 }}>دانلود / مشاهده فایل مرجع مشتری</a>
           </div>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {STATUS_OPTIONS.map((s) => (
-          <button
-            key={s}
-            onClick={() => onStatusChange(order.id, s)}
-            style={{
-              fontSize: 11, padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
-              border: `1.5px solid ${order.status === s ? colors.red : colors.border}`,
-              background: order.status === s ? colors.redDim : 'transparent',
-              color: order.status === s ? colors.text : colors.textMuted,
-            }}
-          >
-            {s}
+
+      <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 10, marginTop: 10, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 11.5, color: colors.textMuted, fontWeight: 600 }}>وضعیت پرداخت:</span>
+          <PaymentBadge status={order.payment_status} />
+        </div>
+        {order.receipt_url && (
+          <div style={{ marginBottom: 8 }}>
+            <a href={order.receipt_url} target="_blank" rel="noreferrer" style={{ color: colors.red, fontSize: 12, fontWeight: 600 }}>مشاهده رسید پرداخت</a>
+          </div>
+        )}
+        {order.payment_status !== 'پرداخت شده' && order.receipt_url && (
+          <button onClick={() => onConfirmPayment(order.id)} style={{ fontSize: 11.5, padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${colors.success}`, background: 'transparent', color: colors.success, cursor: 'pointer', fontWeight: 600 }}>
+            تایید پرداخت
           </button>
-        ))}
+        )}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 10, marginBottom: 10 }}>
+        <div style={{ fontSize: 11.5, color: colors.textMuted, fontWeight: 600, marginBottom: 6 }}>ارسال فایل نهایی به مشتری:</div>
+        {order.delivery_url && (
+          <div style={{ marginBottom: 6 }}>
+            <a href={order.delivery_url} target="_blank" rel="noreferrer" style={{ color: colors.success, fontSize: 12, fontWeight: 600 }}>لینک فعلی فایل نهایی</a>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            value={deliveryLink}
+            onChange={(e) => setDeliveryLink(e.target.value)}
+            placeholder="لینک فایل نهایی (گوگل‌درایو و ...)"
+            style={{ flex: 1, background: colors.surface2, border: `1.5px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', color: colors.text, fontSize: 11.5, boxSizing: 'border-box' }}
+          />
+          <button onClick={saveDelivery} disabled={savingDelivery} style={{ fontSize: 11.5, padding: '8px 12px', borderRadius: 8, border: 'none', background: colors.red, color: '#fff', cursor: 'pointer', fontWeight: 600, opacity: savingDelivery ? 0.6 : 1 }}>
+            {savingDelivery ? '...' : 'ثبت و ارسال'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s}
+              onClick={() => onStatusChange(order.id, s)}
+              style={{
+                fontSize: 11, padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                border: `1.5px solid ${order.status === s ? colors.red : colors.border}`,
+                background: order.status === s ? colors.redDim : 'transparent',
+                color: order.status === s ? colors.text : colors.textMuted,
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => onDelete(order.id)} style={{ fontSize: 11, padding: '6px 10px', borderRadius: 8, border: `1.5px solid ${colors.red}`, background: 'transparent', color: colors.red, cursor: 'pointer', fontWeight: 600 }}>
+          حذف سفارش
+        </button>
       </div>
     </div>
   );
+}
+
+function PaymentBadge({ status }) {
+  const map = {
+    'در انتظار پرداخت': { c: colors.gold, bg: colors.goldDim },
+    'در انتظار تایید پرداخت': { c: colors.red, bg: colors.redDim },
+    'پرداخت شده': { c: colors.success, bg: '#0f3a26' },
+  };
+  const s = map[status] || map['در انتظار پرداخت'];
+  return <span style={{ color: s.c, background: s.bg, fontSize: 10.5, padding: '3px 9px', borderRadius: 999, fontWeight: 600, whiteSpace: 'nowrap' }}>{status || 'در انتظار پرداخت'}</span>;
 }
 
 function Dashboard() {
@@ -155,6 +243,34 @@ function Dashboard() {
     }
   }
 
+  async function handleDelivered(id, deliveryLink) {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, delivery_url: deliveryLink, status: 'تحویل شده' } : o)));
+    try {
+      await updateOrder(id, { delivery_url: deliveryLink, status: 'تحویل شده' });
+    } catch (e) {
+      load();
+    }
+  }
+
+  async function handleConfirmPayment(id) {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, payment_status: 'پرداخت شده' } : o)));
+    try {
+      await updateOrder(id, { payment_status: 'پرداخت شده' });
+    } catch (e) {
+      load();
+    }
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('مطمئنی می‌خوای این سفارش حذف بشه؟ این کار قابل بازگشت نیست.')) return;
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    try {
+      await deleteOrder(id);
+    } catch (e) {
+      load();
+    }
+  }
+
   function logout() {
     sessionStorage.removeItem('jamalvfx_admin_auth');
     window.location.reload();
@@ -175,7 +291,7 @@ function Dashboard() {
         <div style={{ color: colors.textFaint, textAlign: 'center', padding: 40 }}>هنوز سفارشی ثبت نشده</div>
       )}
       {orders.map((o) => (
-        <OrderCard key={o.id} order={o} onStatusChange={handleStatusChange} />
+        <OrderCard key={o.id} order={o} onStatusChange={handleStatusChange} onDelivered={handleDelivered} onDelete={handleDelete} onConfirmPayment={handleConfirmPayment} />
       ))}
     </div>
   );
