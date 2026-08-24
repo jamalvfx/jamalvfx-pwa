@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jamalvfx-order-v1';
+const CACHE_NAME = 'jamalvfx-order-v2';
 const ASSETS = [
   './',
   './index.html',
