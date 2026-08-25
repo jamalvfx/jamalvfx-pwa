@@ -69,14 +69,6 @@ async function fetchOrdersByContact(contact) {
 
 const PAYMENT_CARD = { number: '6219861916255325', holder: 'جمال محمدی' };
 
-async function fetchOrdersByContact(contact) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?contact=eq.${encodeURIComponent(contact)}&select=*&order=created_at.desc`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-  });
-  if (!res.ok) throw new Error('fetch failed');
-  return res.json();
-}
-
 /* ---------- local icon set (replaces lucide-react — no bundler here) ---------- */
 function Icon({ size = 18, color = 'currentColor', style, children }) {
   return (
