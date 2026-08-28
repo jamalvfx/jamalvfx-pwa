@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>jamalvfx_ | ثبت سفارش</title>
+<meta name="description" content="ثبت سفارش کاورموزیک، اکولایزر، ویژوالایزر و لوگو" />
+<meta name="theme-color" content="#0a0a0c" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;900&display=swap');
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: #050506; }
+  body { font-family: 'Vazirmatn', sans-serif; overscroll-behavior-y: contain; }
+  #root { min-height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #57575f; }
+  input, textarea, select { outline: none; font-family: 'Vazirmatn', sans-serif; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes eqbar { from { height: 8px; } to { height: var(--maxh); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-up { animation: fadeUp 320ms ease-out; }
+  #loading { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #loading img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+</style>
+</head>
+<body>
+<div id="root"><div id="loading"><img src="splash.png" alt="jamalvfx loading" /></div></div>
+
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel" data-type="module" src="app.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
